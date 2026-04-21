@@ -391,7 +391,7 @@ canvas{display:block;width:100%;touch-action:none;}
   <div class="topbar">
     <div class="tlogo">COOL <em>ROOF</em></div>
     <div class="tright">
-      <span id="sync-status" style="font-size:11px;cursor:pointer" onclick="manualSync()" title="Tap to sync with Google Sheets"></span>
+      <span id="sync-status" style="font-size:11px;cursor:pointer;min-width:60px;text-align:right" onclick="manualSync()" title="Tap to sync">☁️ Sync</span>
       <div class="upill" id="upill"></div>
       <button class="xbtn" onclick="logout()">Exit</button>
     </div>
@@ -1862,6 +1862,7 @@ async function syncToSheets(){
   try{
     await fetch(API_URL,{
       method:'POST',
+      headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({
         action:'save',
         data:{customers,invoices,calJobs,blockedDays,documents}
@@ -1877,7 +1878,10 @@ async function syncFromSheets(){
   if(!API_URL)return;
   setSyncStatus('syncing','Loading...');
   try{
-    const res=await fetch(API_URL+'?action=load');
+    const res=await fetch(API_URL+'?action=load', {
+      method:'GET',
+      headers:{'Content-Type':'application/json'},
+    });
     const data=await res.json();
     if(data.error){setSyncStatus('error',data.error);return;}
     if(data.customers&&data.customers.length>0){
