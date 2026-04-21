@@ -1874,62 +1874,61 @@ async function syncToSheets(){
   }
 }
 
-async function syncFromSheets(){
-  if(!API_URL)return;
+function syncFromSheets(){
+  if(!API_URL) return;
   setSyncStatus('syncing','Loading...');
-  try{
-    const res=await fetch(API_URL+'?action=load', {
-      method:'GET',
-      headers:{'Content-Type':'application/json'},
-    });
-    const data=await res.json();
-    if(data.error){setSyncStatus('error',data.error);return;}
-    if(data.customers&&data.customers.length>0){
-      customers=data.customers.map(r=>({
-        id:r.ID||r.id,date:r.Date||r.date,first:r.First||r.first,
-        last:r.Last||r.last,phone:r.Phone||r.phone,email:r.Email||r.email,
-        street:r.Street||r.street,city:r.City||r.city,zip:r.Zip||r.zip,
-        service:r.Service||r.service,roof:r.Roof||r.roof,
-        status:r.Status||r.status,estimate:Number(r.Estimate||r.estimate)||0,
-        deposit:Number(r.Deposit||r.deposit)||0,paid:Number(r.Paid||r.paid)||0,
-        assignedTo:r.AssignedTo||r.assignedTo,notes:r.Notes||r.notes
-      }));
-    }
-    if(data.invoices&&data.invoices.length>0){
-      invoices=data.invoices.map(r=>({
-        id:r.ID||r.id,custId:r.CustID||r.custId,cust:r.Customer||r.cust,
-        date:r.Date||r.date,due:r.DueDate||r.due,
-        original:Number(r.Original||r.original)||0,
-        changeOrders:typeof r.ChangeOrders==='string'?JSON.parse(r.ChangeOrders||'[]'):(r.changeOrders||[]),
-        progressPaid:r.ProgressPaid==='TRUE'||r.progressPaid===true,
-        finalPaid:r.FinalPaid==='TRUE'||r.finalPaid===true,
-        assignedTo:r.AssignedTo||r.assignedTo
-      }));
-    }
-    if(data.calJobs&&data.calJobs.length>0){
-      calJobs=data.calJobs.map(r=>({
-        id:r.ID||r.id,name:r.Name||r.name,addr:r.Address||r.addr,
-        service:r.Service||r.service,startDate:r.StartDate||r.startDate,
-        endDate:r.EndDate||r.endDate,assignedTo:r.AssignedTo||r.assignedTo,
-        notes:r.Notes||r.notes
-      }));
-    }
-    if(data.blockedDays)blockedDays=data.blockedDays;
-    localStorage.setItem('crm_data',JSON.stringify({customers,invoices,calJobs,blockedDays,documents}));
-    renderAll();
-    setSyncStatus('ok','Loaded '+new Date().toLocaleTimeString());
-  }catch(e){
-    setSyncStatus('error','Load failed');
-  }
+  // JSONP — Apps Script CORS workaround
+  const cbName = 'crmCallback_'+Date.now();
+  const script = document.createElement('script');
+  window[cbName] = function(data){
+    try{
+      delete window[cbName];
+      document.body.removeChild(script);
+      if(data.error){ setSyncStatus('error','Load failed'); return; }
+      if(data.customers&&data.customers.length>0) customers=data.customers;
+      if(data.invoices&&data.invoices.length>0)   invoices=data.invoices;
+      if(data.calJobs&&data.calJobs.length>0)     calJobs=data.calJobs;
+      if(data.blockedDays)                        blockedDays=data.blockedDays;
+      localStorage.setItem('crm_data',JSON.stringify({customers,invoices,calJobs,blockedDays,documents}));
+      renderAll();
+      setSyncStatus('ok','Synced '+new Date().toLocaleTimeString());
+      showToast('✅ Google Sheets synced!');
+    }catch(e){ setSyncStatus('error','Load failed'); }
+  };
+  script.src = API_URL+'?action=load&callback='+cbName;
+  script.onerror = ()=>{ setSyncStatus('error','Load failed'); showToast('⚠️ Sync failed — check connection'); };
+  document.body.appendChild(script);
 }
 
 async function manualSync(){
   if(!API_URL){
-    showToast('⚠️ No API URL set. See setup instructions.');
+    showToast('No API URL — Google Sheets not connected');
     return;
   }
-  await syncFromSheets();
-  showToast('Synced with Google Sheets ✅');
+  // 1. Save local data to Sheets
+  await syncToSheets();
+  // 2. Load back from Sheets (to get other users' data)
+  syncFromSheets();
+}
+
+async function syncToSheets(){
+  if(!API_URL) return;
+  setSyncStatus('syncing','Saving...');
+  try{
+    const res = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({
+        action:'save',
+        data:{customers,invoices,calJobs,blockedDays,documents}
+      })
+    });
+    const data = await res.json();
+    if(data.ok) setSyncStatus('ok','Saved '+new Date().toLocaleTimeString());
+    else        setSyncStatus('error','Save failed');
+  }catch(e){
+    setSyncStatus('error','Save failed');
+  }
 }
 
 // ══════════════════════════════════
